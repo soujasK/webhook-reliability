@@ -1,0 +1,70 @@
+version: "3.9"
+
+x-env: &common-env
+  DATABASE_URL: postgres://postgres:postgres@postgres:5432/webhooks?sslmode=disable
+  REDIS_ADDR: redis:6379
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: webhooks
+      POSTGRES_PASSWORD: postgres
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+
+  api:
+    build: .
+    command: ["/server", "--mode=api"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+    ports: ["8080:8080"]
+    environment: *common-env
+
+  dispatcher:
+    build: .
+    command: ["/server", "--mode=dispatcher"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+    environment: *common-env
+
+  worker:
+    build: .
+    command: ["/server", "--mode=worker"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+    environment:
+      <<: *common-env
+      WORKER_COUNT: "4"
+    # scale with: docker compose up --scale worker=3
+
+  scheduler:
+    build: .
+    command: ["/server", "--mode=scheduler"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+    environment: *common-env
+
+  mock-receiver:
+    build: .
+    entrypoint: ["/mock-receiver"]
+    environment:
+      FAIL_COUNT: "0"
+      PORT: "9090"
+    ports: ["9090:9090"]
+
+volumes:
+  pgdata:
