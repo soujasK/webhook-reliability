@@ -1,3 +1,24 @@
+# Go build artifacts
 bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Local binaries
+/server
+/mock-receiver
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Docker local state
+pgdata/
 *.log
+
+# Environment files
 .env
+.env.*

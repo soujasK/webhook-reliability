@@ -1,5 +1,11 @@
 # Webhook Reliability & Replay Engine
 
+## Requirements
+
+This project uses Go and Docker; no Python requirements file is required for the app runtime.
+
+If you want a simple environment file for tooling or scripts, you may add packages here as needed.
+
 Reliable event delivery to customer HTTP endpoints: durable ingestion, per-endpoint ordering,
 exponential-backoff retries, rate limiting, dead-lettering, and manual replay.
 

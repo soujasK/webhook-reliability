@@ -24,13 +24,13 @@ services:
 
   api:
     build: .
-    # Dockerfile sets ENTRYPOINT ["/server"]; `command:` supplies ENTRYPOINT's *arguments*, not a
-    # replacement for it (that's `entrypoint:`, used below for mock-receiver). Repeating "/server"
-    # here used to make the actual argv `/server /server --mode=X`, which Go's flag package parses
-    # by stopping at the first non-flag token ("/server") — silently discarding --mode and leaving
-    # every service defaulted to --mode=all. Confirmed via `docker top`; fixed by dropping the
-    # binary name so command: is just the flags.
-    command: ["--mode=api"]
+    # Dockerfile now uses CMD (not ENTRYPOINT), so `command:` here fully replaces the default
+    # rather than appending to a fixed entrypoint -- it must include the binary name. (An earlier
+    # version had ENTRYPOINT ["/server"] + command: ["/server", "--mode=X"], which Docker
+    # concatenates into `/server /server --mode=X`; Go's flag parser stops at the first non-flag
+    # token and silently discarded --mode. Confirmed via `docker top`, fixed at the Dockerfile
+    # level instead of here so the same footgun can't recur on Render/Railway's command overrides.)
+    command: ["/server", "--mode=api"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
@@ -39,7 +39,7 @@ services:
 
   dispatcher:
     build: .
-    command: ["--mode=dispatcher"]
+    command: ["/server", "--mode=dispatcher"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
@@ -47,7 +47,7 @@ services:
 
   worker:
     build: .
-    command: ["--mode=worker"]
+    command: ["/server", "--mode=worker"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
@@ -58,7 +58,7 @@ services:
 
   scheduler:
     build: .
-    command: ["--mode=scheduler"]
+    command: ["/server", "--mode=scheduler"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }

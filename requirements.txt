@@ -1,0 +1,2 @@
+# This project is a Go service and does not require Python dependencies.
+# Keep this file as a placeholder for compatibility with deployment tooling.
