@@ -24,7 +24,13 @@ services:
 
   api:
     build: .
-    command: ["/server", "--mode=api"]
+    # Dockerfile sets ENTRYPOINT ["/server"]; `command:` supplies ENTRYPOINT's *arguments*, not a
+    # replacement for it (that's `entrypoint:`, used below for mock-receiver). Repeating "/server"
+    # here used to make the actual argv `/server /server --mode=X`, which Go's flag package parses
+    # by stopping at the first non-flag token ("/server") — silently discarding --mode and leaving
+    # every service defaulted to --mode=all. Confirmed via `docker top`; fixed by dropping the
+    # binary name so command: is just the flags.
+    command: ["--mode=api"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
@@ -33,7 +39,7 @@ services:
 
   dispatcher:
     build: .
-    command: ["/server", "--mode=dispatcher"]
+    command: ["--mode=dispatcher"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
@@ -41,7 +47,7 @@ services:
 
   worker:
     build: .
-    command: ["/server", "--mode=worker"]
+    command: ["--mode=worker"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
@@ -52,7 +58,7 @@ services:
 
   scheduler:
     build: .
-    command: ["/server", "--mode=scheduler"]
+    command: ["--mode=scheduler"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }

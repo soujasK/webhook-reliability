@@ -88,12 +88,19 @@ func (p *Pool) scheduleRetry(ctx context.Context, deliveryID string) {
 		log.Printf("dead-lettered %s after %d attempts", deliveryID, attempts)
 		return
 	}
-	delay := time.Duration(math.Pow(2, float64(attempts))) * time.Second
+	delay := backoffBase(attempts)
 	jitter := time.Duration(rand.Intn(1000)) * time.Millisecond
 	if err := p.redis.ScheduleRetry(deliveryID, time.Now().Add(delay+jitter)); err != nil {
 		log.Printf("worker: schedule retry failed for %s: %v", deliveryID, err)
 	}
 	log.Printf("retry scheduled for %s: attempt %d, backoff ~%v", deliveryID, attempts, delay)
+}
+
+// backoffBase is the deterministic part of the retry delay: 2^attempts seconds. scheduleRetry
+// adds up to 1s of jitter on top so many endpoints failing at once don't retry in lockstep.
+// Pulled out as its own function so the growth curve can be unit tested without a DB/Redis.
+func backoffBase(attempts int) time.Duration {
+	return time.Duration(math.Pow(2, float64(attempts))) * time.Second
 }
 
 func sign(payload []byte, secret string) string {
