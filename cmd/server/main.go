@@ -37,7 +37,7 @@ func main() {
 		log.Fatalf("run migrations: %v", err)
 	}
 
-	redisClient := queue.NewRedisClient(cfg.RedisAddr)
+	redisClient := queue.NewRedisClient(cfg.RedisURL)
 
 	switch *mode {
 	case "seed":
@@ -48,6 +48,7 @@ func main() {
 		log.Printf("seeded demo endpoint %s -> %s (subscribed to payment.succeeded)", id, *seedURL)
 
 	case "api":
+		maybeSeed(ctx, db, cfg.SeedURL)
 		runAPI(ctx, db, redisClient, cfg.HTTPPort)
 
 	case "worker":
@@ -64,6 +65,7 @@ func main() {
 
 	case "all":
 		log.Println("starting api + dispatcher + scheduler + workers in one process (local dev mode)")
+		maybeSeed(ctx, db, cfg.SeedURL)
 		go queue.RunDispatcher(ctx, db, redisClient, cfg.DispatchEvery)
 		go queue.RunRetryScheduler(ctx, db, redisClient, cfg.RetryEvery)
 		go worker.NewPool(db, redisClient, cfg.MaxAttempts).Run(ctx, cfg.WorkerCount)
@@ -72,6 +74,23 @@ func main() {
 	default:
 		log.Fatalf("unknown --mode %q", *mode)
 	}
+}
+
+// maybeSeed registers cfg.SEED_URL as a demo endpoint on boot, when set. SeedDemoEndpoint
+// already no-ops if that URL is already registered, so this is safe to run on every restart.
+// Only called from modes that own the one-time-per-deploy startup path (api, all) — never from
+// worker/dispatcher/scheduler, which may run as multiple replicas and would race each other on
+// the same insert.
+func maybeSeed(ctx context.Context, db *sql.DB, seedURL string) {
+	if seedURL == "" {
+		return
+	}
+	id, err := store.SeedDemoEndpoint(ctx, db, seedURL)
+	if err != nil {
+		log.Printf("seed on boot failed (continuing without it): %v", err)
+		return
+	}
+	log.Printf("seeded demo endpoint %s -> %s (subscribed to payment.succeeded)", id, seedURL)
 }
 
 func runAPI(ctx context.Context, db *sql.DB, redisClient *queue.RedisClient, port string) {

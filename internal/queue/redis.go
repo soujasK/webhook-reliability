@@ -11,12 +11,14 @@ type RedisClient struct {
 	Pool *redis.Pool
 }
 
-func NewRedisClient(addr string) *RedisClient {
+// NewRedisClient dials via a redis:// (or rediss:// for TLS) URL rather than a bare host:port,
+// so hosted Redis that requires AUTH (Railway, Upstash, etc.) works the same as local dev.
+func NewRedisClient(redisURL string) *RedisClient {
 	pool := &redis.Pool{
 		MaxIdle:     20,
 		MaxActive:   100,
 		IdleTimeout: 240 * time.Second,
-		Dial:        func() (redis.Conn, error) { return redis.Dial("tcp", addr) },
+		Dial:        func() (redis.Conn, error) { return redis.DialURL(redisURL) },
 	}
 	return &RedisClient{Pool: pool}
 }
