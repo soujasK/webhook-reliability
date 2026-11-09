@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"log"
-	"math"
 	"math/rand"
 	"net/http"
 	"time"
@@ -88,7 +87,16 @@ func (p *Pool) scheduleRetry(ctx context.Context, deliveryID string) {
 		log.Printf("dead-lettered %s after %d attempts", deliveryID, attempts)
 		return
 	}
-	delay := time.Duration(math.Pow(2, float64(attempts))) * time.Second
+	// Cap exponential backoff at one hour; large attempt counts must not overflow
+	// time.Duration and accidentally schedule retries in the past.
+	backoffSeconds := int64(3600)
+	if attempts < 12 {
+		backoffSeconds = int64(1) << uint(attempts)
+		if backoffSeconds > 3600 {
+			backoffSeconds = 3600
+		}
+	}
+	delay := time.Duration(backoffSeconds) * time.Second
 	jitter := time.Duration(rand.Intn(1000)) * time.Millisecond
 	if err := p.redis.ScheduleRetry(deliveryID, time.Now().Add(delay+jitter)); err != nil {
 		log.Printf("worker: schedule retry failed for %s: %v", deliveryID, err)
