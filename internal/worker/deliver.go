@@ -89,14 +89,7 @@ func (p *Pool) scheduleRetry(ctx context.Context, deliveryID string) {
 	}
 	// Cap exponential backoff at one hour; large attempt counts must not overflow
 	// time.Duration and accidentally schedule retries in the past.
-	backoffSeconds := int64(3600)
-	if attempts < 12 {
-		backoffSeconds = int64(1) << uint(attempts)
-		if backoffSeconds > 3600 {
-			backoffSeconds = 3600
-		}
-	}
-	delay := time.Duration(backoffSeconds) * time.Second
+	delay := retryBackoff(attempts)
 	jitter := time.Duration(rand.Intn(1000)) * time.Millisecond
 	if err := p.redis.ScheduleRetry(deliveryID, time.Now().Add(delay+jitter)); err != nil {
 		log.Printf("worker: schedule retry failed for %s: %v", deliveryID, err)
@@ -108,4 +101,20 @@ func sign(payload []byte, secret string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(payload)
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// retryBackoff grows exponentially but never exceeds one hour. Invalid
+// non-positive attempt counts use the first retry interval.
+func retryBackoff(attempts int) time.Duration {
+	if attempts <= 0 {
+		attempts = 1
+	}
+	if attempts >= 12 {
+		return time.Hour
+	}
+	seconds := int64(1) << uint(attempts)
+	if seconds > 3600 {
+		seconds = 3600
+	}
+	return time.Duration(seconds) * time.Second
 }
