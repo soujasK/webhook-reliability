@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 
@@ -35,6 +36,8 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("ok"))
 }
 
+const maxIngestBodyBytes = 1 << 20
+
 type ingestRequest struct {
 	Source         string          `json:"source"`
 	EventType      string          `json:"event_type"`
@@ -46,8 +49,16 @@ type ingestRequest struct {
 // before responding. This is the durability guarantee the whole system is built around.
 func (s *Server) handleIngestEvent(w http.ResponseWriter, r *http.Request) {
 	var req ingestRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid json body", http.StatusBadRequest)
+	r.Body = http.MaxBytesReader(w, r.Body, maxIngestBodyBytes)
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&req); err != nil {
+		http.Error(w, "invalid json body", ingestDecodeStatus(err))
+		return
+	}
+	// A request must contain exactly one JSON object, not multiple documents.
+	var extra json.RawMessage
+	if err := decoder.Decode(&extra); err != io.EOF {
+		http.Error(w, "invalid json body", ingestDecodeStatus(err))
 		return
 	}
 	if req.EventType == "" || req.IdempotencyKey == "" {
@@ -123,4 +134,12 @@ func (s *Server) handleGetDelivery(w http.ResponseWriter, r *http.Request) {
 		"status":        status,
 		"attempt_count": attempts,
 	})
+}
+
+func ingestDecodeStatus(err error) int {
+	var maxErr *http.MaxBytesError
+	if errors.As(err, &maxErr) {
+		return http.StatusRequestEntityTooLarge
+	}
+	return http.StatusBadRequest
 }
