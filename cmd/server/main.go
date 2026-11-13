@@ -22,6 +22,15 @@ func main() {
 	seedURL := flag.String("seed-url", "http://localhost:9090/receive", "endpoint URL to insert when --mode=seed")
 	flag.Parse()
 
+	// Reject unsupported modes before connecting to Postgres or running migrations.
+	// This makes CLI errors deterministic even when the database is unavailable.
+	switch *mode {
+	case "api", "worker", "dispatcher", "scheduler", "seed", "all":
+		// Supported mode.
+	default:
+		log.Fatalf("unknown --mode %q", *mode)
+	}
+
 	cfg := config.Load()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
