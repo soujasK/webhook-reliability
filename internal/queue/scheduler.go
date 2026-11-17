@@ -32,6 +32,10 @@ func RunRetryScheduler(ctx context.Context, db *sql.DB, redis *RedisClient, inte
 				}
 				if err := redis.LPushDelivery(job.EndpointID, deliveryID); err != nil {
 					log.Printf("scheduler: requeue %s failed: %v", deliveryID, err)
+					continue
+				}
+				if err := redis.AckRetry(deliveryID); err != nil {
+					log.Printf("scheduler: acknowledge retry %s failed: %v", deliveryID, err)
 				}
 			}
 		}

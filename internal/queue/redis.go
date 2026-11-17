@@ -76,7 +76,8 @@ func (r *RedisClient) ScheduleRetry(deliveryID string, at time.Time) error {
 	return err
 }
 
-// DueRetries returns delivery IDs scored at or before now, and removes them from the set.
+// DueRetries peeks at due delivery IDs without removing them. The scheduler must
+// acknowledge each retry only after it has been successfully re-queued.
 func (r *RedisClient) DueRetries(now time.Time, limit int) ([]string, error) {
 	conn := r.Pool.Get()
 	defer conn.Close()
@@ -84,12 +85,16 @@ func (r *RedisClient) DueRetries(now time.Time, limit int) ([]string, error) {
 	if err != nil && err != redis.ErrNil {
 		return nil, err
 	}
-	for _, id := range ids {
-		if _, err := conn.Do("ZREM", retryZSetKey, id); err != nil {
-			return nil, err
-		}
-	}
 	return ids, nil
+}
+
+// AckRetry removes a retry only after its delivery has been pushed to the queue.
+// A failed acknowledgement can cause a duplicate push, which is safer than losing a retry.
+func (r *RedisClient) AckRetry(deliveryID string) error {
+	conn := r.Pool.Get()
+	defer conn.Close()
+	_, err := conn.Do("ZREM", retryZSetKey, deliveryID)
+	return err
 }
 
 const tokenBucketScript = `
