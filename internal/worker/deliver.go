@@ -37,6 +37,13 @@ func (p *Pool) deliverOne(ctx context.Context, deliveryID, endpointID string) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, job.URL, bytes.NewReader(job.Payload))
 	if err != nil {
 		log.Printf("worker: build request failed for %s: %v", deliveryID, err)
+		// A malformed endpoint URL must not silently discard a popped delivery.
+		// Record the failure and follow the same retry/dead-letter path as HTTP errors.
+		attemptNum := job.AttemptCount + 1
+		if recordErr := store.RecordAttempt(ctx, p.db, deliveryID, attemptNum, nil, err.Error(), int(time.Since(start).Milliseconds())); recordErr != nil {
+			log.Printf("worker: record attempt failed for %s: %v", deliveryID, recordErr)
+		}
+		p.scheduleRetry(ctx, deliveryID)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
