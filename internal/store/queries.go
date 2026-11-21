@@ -187,7 +187,13 @@ func SeedDemoEndpoint(ctx context.Context, db *sql.DB, url string) (endpointID s
 	var existing string
 	err = db.QueryRowContext(ctx, `SELECT id FROM endpoints WHERE url = $1 LIMIT 1`, url).Scan(&existing)
 	if err == nil {
-		return existing, nil
+		// An existing endpoint may have been created without the demo subscription.
+		// Re-running the seed must restore that subscription as well.
+		_, err = db.ExecContext(ctx, `
+			INSERT INTO subscriptions (endpoint_id, event_type) VALUES ($1, 'payment.succeeded')
+			ON CONFLICT DO NOTHING
+		`, existing)
+		return existing, err
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return "", err
