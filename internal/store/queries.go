@@ -50,7 +50,15 @@ func InsertEventAndDeliveries(ctx context.Context, db *sql.DB, source, eventType
 		}
 		endpointIDs = append(endpointIDs, id)
 	}
-	rows.Close()
+	// A cursor can fail after the last successfully scanned row. Do not commit
+	// an event with only a partial set of subscribed deliveries.
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return "", err
+	}
+	if err := rows.Close(); err != nil {
+		return "", err
+	}
 
 	for _, epID := range endpointIDs {
 		if _, err := tx.ExecContext(ctx, `
